@@ -1,5 +1,9 @@
 # NinjaHoldings Data Engineering - Part 1: Data Modeling & SQL
 
+This section outlines how I designed a simple relational schema for customer and transaction data, along with the SQL queries needed for basic analytics. I kept the design straightforward; two tables in 3NF with proper constraints to ensure data integrity.
+
+---
+
 ## 1. Relational Schema Design
 
 ### Entity-Relationship Model
@@ -19,22 +23,18 @@
 
 ### Design Justification
 
-This is a simple two-table relational schema optimized for analytical queries:
+I designed this as a simple two-table schema optimized for analytical queries. The customers table stores basic customer info, and the transactions table records financial activity. Each customer can have multiple transactions (one-to-many relationship).
 
-- **Customers** table stores customer information
-- **Transactions** table stores transaction records
-- One-to-many relationship: each customer can have multiple transactions
+**Why this structure works:**
+- **Third Normal Form (3NF):** All attributes depend on the primary key, no transitive dependencies, and the foreign key relationship maintains referential integrity.
+- **No over-normalization:** I kept state codes directly in the customers table since they're just atomic 2-letter values. Creating a separate states table would add unnecessary complexity without real benefit.
+- **Synthetic data consideration:** The source data has customer names like "Customer_1", so I kept `name` as a single field rather than splitting it into first/last names—there's no practical reason to parse synthetic data that way.
 
-**The schema is in Third Normal Form (3NF):**
-- All attributes depend on the primary key
-- No transitive dependencies
-- Foreign key relationship maintains referential integrity
-
-**Schema design decisions:**
-- Used `INTEGER` for ID fields (efficient storage and indexing, matches source data type)
-- Kept `name` as single field (source data is synthetic "Customer_N" format - no benefit to splitting)
-- State stored as `CHAR(2)` for standardized 2-letter state abbreviations
-- Foreign key constraint ensures no orphaned transactions
+**Key design decisions:**
+- Used `INTEGER` for ID fields since they match the source data and are efficient for indexing
+- Used `DECIMAL(12, 2)` for currency to avoid floating-point precision errors
+- Used `CHAR(2)` for state codes (fixed-length, efficient)
+- Added a foreign key constraint to prevent orphaned transactions
 
 ---
 
@@ -57,7 +57,7 @@ CREATE TABLE customers (
 CREATE TABLE transactions (
     transaction_id    INTEGER PRIMARY KEY,
     customer_id       INTEGER NOT NULL,
-    amount            DECIMAL(12, 2) CHECK (amount IS NOT NULL),
+    amount            DECIMAL(12, 2) NOT NULL CHECK (amount >= 0),
     transaction_date  DATE NOT NULL,
 
     FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
@@ -69,19 +69,19 @@ CREATE TABLE transactions (
 ### Key Design Decisions
 
 **Data Types:**
-- `INTEGER` for IDs: Efficient storage and indexing, matches source data
-- `DECIMAL(12, 2)`: Provides precise fixed-point storage for financial data up to 10 digits before the decimal and 2 after, avoiding floating-point rounding issues
-- `DATE` for dates: Matches source data precision (no time component available)
-- `CHAR(2)` for state: Fixed-length, efficient for 2-letter state codes
+- `INTEGER` for IDs: Efficient storage and indexing, matches the source data
+- `DECIMAL(12, 2)`: Precise fixed-point storage for currency (avoids floating-point rounding issues)
+- `DATE` for dates: Matches source data precision—no time component is available
+- `CHAR(2)` for state: Fixed-length, efficient for 2-letter codes
 - `VARCHAR(50)` for names: Reasonable length for customer names
 
 **Constraints:**
 - `NOT NULL` on all columns: Ensures data completeness
-- `CHECK (amount IS NOT NULL)`: Ensures valid non-null amounts while allowing potential refunds or credits if negative amounts are later introduced
-- `PRIMARY KEY`: Ensures uniqueness and creates implicit index
+- `CHECK (amount >= 0)`: Prevents negative transactions (refunds would be modeled separately)
+- `PRIMARY KEY`: Ensures uniqueness and creates an implicit index
 - `FOREIGN KEY` with:
-  - `ON DELETE RESTRICT`: Prevents deleting customers with existing transactions (data integrity)
-  - `ON UPDATE CASCADE`: If customer_id changes, update related transactions automatically
+  - `ON DELETE RESTRICT`: Prevents deleting customers who have existing transactions (preserves data integrity)
+  - `ON UPDATE CASCADE`: If customer_id changes, related transactions update automatically
 
 ---
 
@@ -89,7 +89,7 @@ CREATE TABLE transactions (
 
 ### Query 1: Total Customers Who Signed Up in 2024
 
-**Objective:** Count the total number of customers who created accounts during the year 2024, useful for measuring year-over-year customer acquisition growth.
+**Objective:** Count how many customers created accounts in 2024, useful for tracking year-over-year growth.
 
 ```sql
 SELECT COUNT(*) AS total_customers_2024
@@ -109,7 +109,7 @@ total_customers_2024
 
 ### Query 2: Top 5 Customers by Total Transaction Amount
 
-**Objective:** Identify the highest-value customers by total transaction volume. This helps prioritize customer retention efforts and identify VIP accounts for personalized service.
+**Objective:** Identify the highest-value customers by total transaction volume to prioritize retention efforts and personalized service.
 
 ```sql
 SELECT
@@ -136,7 +136,7 @@ customer_id | name        | total_amount
 
 ### Query 3: Average Transaction Amount by State
 
-**Objective:** Calculate the average transaction amount for each state to identify geographic patterns in customer spending behavior. This can inform regional marketing strategies and pricing decisions.
+**Objective:** Calculate average transaction amounts by state to identify geographic spending patterns. This could inform regional marketing strategies or pricing decisions.
 
 ```sql
 SELECT
@@ -164,18 +164,16 @@ TX    | 98                | 518.34                 | 50797.32
 ## 4. Notes and Assumptions
 
 ### Data Assumptions
-- Transaction amounts are positive in this sample dataset, but the schema supports negative values for future use cases like refunds or credits
-- Every transaction has a valid customer reference (enforced by foreign key constraint)
-- Customer names in source CSV follow "Customer_N" format (synthetic test data)
-- State codes in source data are valid 2-letter US state abbreviations
+- The sample data has all positive transaction amounts, but the schema uses `CHECK (amount >= 0)` to prevent negatives. Refunds or credits would be modeled as separate transaction types.
+- Every transaction must reference a valid customer (enforced by foreign key constraint).
+- Customer names follow the "Customer_N" format (synthetic test data).
+- State codes are valid 2-letter US abbreviations.
 
 ### Business Rules
-- Customers cannot be deleted if they have existing transactions (ON DELETE RESTRICT)
-- No duplicate customer IDs or transaction IDs (PRIMARY KEY constraint)
-- All fields are required (NOT NULL constraints)
+- Customers can't be deleted if they have existing transactions (`ON DELETE RESTRICT`).
+- No duplicate customer IDs or transaction IDs (`PRIMARY KEY` constraint).
+- All fields are required (`NOT NULL` constraints).
 
 ### Performance Notes
-- For small datasets (<10K rows), indexes on foreign keys are created implicitly by constraints
-- For production scale (millions of rows), would add explicit indexes on:
-  - `transactions.customer_id` (for joins)
-  - Other columns commonly used for queries (e.g. dates for grouping)
+- For this small dataset (<10K rows), indexes are created implicitly by the primary and foreign key constraints.
+- For production scale (millions of rows), I'd add explicit indexes on `transactions.customer_id` for joins and potentially on date columns for filtering and grouping.

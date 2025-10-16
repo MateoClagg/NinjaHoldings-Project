@@ -1,5 +1,2 @@
 # Core Data Processing
 pandas
-
-# Testing
-pytest
