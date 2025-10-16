@@ -43,13 +43,12 @@ uncommitted/
 *.duckdb
 *.duckdb.wal
 
-# Output files (we'll commit the final one)
-output/*.csv
-!output/.gitkeep
+# Output files - include sample output for demonstration
+!output/transformed_transactions_monthly.csv
 
-# Data files (keep structure, not actual data for privacy)
-data/*.csv
-!data/.gitkeep
+# Data files - include sample input data for demonstration
+!data/customers.csv
+!data/transactions.csv
 
 # OS
 .DS_Store
